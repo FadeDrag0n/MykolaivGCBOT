@@ -15,4 +15,4 @@ def main(message):
     bot.send_message(message.chat.id, ua.START_MESSAGE)
 
 
-bot.polling(none_stop=True) #123
+bot.polling(none_stop=True) #123 123
