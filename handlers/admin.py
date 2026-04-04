@@ -41,7 +41,7 @@ def register(bot, admin_id):
         bot.send_message(
             message.chat.id,
             "📦 *Додавання товару*\n\nОберіть категорію:",
-            reply_markup=kb.add_product_categories(categories),  # <- тут
+            reply_markup=kb.add_product_categories(categories),
             parse_mode="Markdown"
         )
 
