@@ -46,18 +46,21 @@ CATALOG_OPEN = ( "🌿🐾 Оберіть категорію товарів:\n\n
                  )
 
 
-def info_message(username, phone_number, email, address):
-        return (
-                "📌 *Інформація про магазин*\n"
-                "🏪 Назва: Mykolaiv Green Care\n"
-                "📍 Адреса: м. Миколаїв, вул. ______\n"
-                "📞 Телефон: +380XXXXXXXXX\n"
-                "📧 Email: mykolaivgreencare@gmail.com\n\n"
-
-                "👤 *Ваші дані*\n"
-                f"🙍 Логін: {username}\n"
-                f"📱 Телефон: {phone_number}\n"
-                f"📧 Email: {email}\n"
-                f"🏠 Адреса: {address}\n"
-                f"Змінити:"
-        )
+def info_message(user) -> str:
+    name    = f"{user.first_name or ''} {user.last_name or ''}".strip() or "не вказано"
+    phone   = user.phone   or "не вказано"
+    email   = user.email   or "не вказано"
+    address = user.address or "не вказано"
+    return (
+        "📌 *Інформація про магазин*\n"
+        "🏪 Назва: Mykolaiv Green Care\n"
+        "📍 Адреса: м. Миколаїв, вул. ______\n"
+        "📞 Телефон: +380XXXXXXXXX\n"
+        "📧 Email: mykolaivgreencare@gmail.com\n\n"
+        "👤 *Ваші дані*\n"
+        f"🙍 Ім'я: {name}\n"
+        f"📱 Телефон: {phone}\n"
+        f"📧 Email: {email}\n"
+        f"🏠 Адреса: {address}\n\n"
+        "✏️ Змінити:"
+    )

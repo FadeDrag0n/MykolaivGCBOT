@@ -1,18 +1,22 @@
 import os
 import telebot
 from dotenv import load_dotenv
+from telebot import custom_filters
 import ua
 from telebot.types import BotCommand, BotCommandScopeChat
-from handlers import catalog
 import keyboards as kb
 import db
-
+from telebot.storage import StateMemoryStorage
+from handlers import catalog, info, admin
 load_dotenv()
+
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-bot = telebot.TeleBot(TOKEN)
+storage = StateMemoryStorage()
+bot = telebot.TeleBot(TOKEN, state_storage=storage)
+bot.add_custom_filter(custom_filters.StateFilter(bot))
 db.init_db()
 
 def setup_commands(bot1, admin_id):
@@ -38,7 +42,15 @@ def setup_commands(bot1, admin_id):
     bot1.set_my_commands(user_commands)
     bot1.set_my_commands(admin_commands, scope=BotCommandScopeChat(admin_id))
 
+@bot.message_handler(commands=["cancel"], state="*")
+@bot.message_handler(func=lambda m: m.text == "🔙 Скасувати", state="*")
+def cancel(message):
+    bot.delete_state(message.from_user.id, message.chat.id)
+    bot.send_message(message.chat.id, "Скасовано ✅", reply_markup=kb.main_menu())
+
 catalog.register(bot)
+info.register(bot)
+admin.register(bot, ADMIN_ID)
 
 @bot.message_handler(commands=['start'])
 def main(message):
@@ -62,17 +74,12 @@ def help_handler(message):
     text = ua.USER_HELP + ua.ADMIN_HELP if is_admin else ua.USER_HELP
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=kb.main_menu())
 
-@bot.message_handler(func=lambda m: m.text == "👤 Контактна інформація")
-def info_handler(message):
-    user = db.get_user(tg_id=message.from_user.id)
-    bot.send_message(message.chat.id, ua.info_message(message.from_user.username, user.phone, user.email, user.address), reply_markup=kb.info())
 
-
-@bot.message_handler(func=lambda message: True)
+@bot.message_handler(state= None, func=lambda message: True)
 def unknown_message(message):
     bot.reply_to(message, ua.UNKNOWN_MESSAGE)
 
 
 #setup_commands(bot, ADMIN_ID)
-bot.infinity_polling()
+bot.infinity_polling(skip_pending=True)
 # bot.polling(non_stop=True)
