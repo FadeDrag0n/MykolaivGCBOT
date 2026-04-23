@@ -27,3 +27,15 @@ class Product:
     description: Optional[str] = None
     stock: int = 0
     photo_id: Optional[str] = None
+
+@dataclass
+class CartItem:
+    id: int
+    tg_id: int
+    product_id: int
+    quantity: int
+    # joined fields (not stored in db directly)
+    product_name: Optional[str] = None
+    product_price: Optional[float] = None
+    product_photo_id: Optional[str] = None
+    product_stock: Optional[int] = None

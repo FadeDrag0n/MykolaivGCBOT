@@ -7,7 +7,7 @@ from telebot.types import BotCommand, BotCommandScopeChat
 import keyboards as kb
 import db
 from telebot.storage import StateMemoryStorage
-from handlers import catalog, info, admin
+from handlers import catalog, info, admin, cart
 load_dotenv()
 
 
@@ -26,19 +26,18 @@ def setup_commands(bot1, admin_id):
         BotCommand("cart",    "Моя корзина"),
         BotCommand("orders",  "Історія товарів"),
         BotCommand("help",    "Допомога"),
-        BotCommand("info", "Контактна інформація"),
+        BotCommand("info",    "Контактна інформація"),
     ]
 
     admin_commands = user_commands + [
-        BotCommand("admin",         "Панель адміністратора"),
-        BotCommand("addproduct",    "Додати товар"),
-        BotCommand("editproduct", "Відредагувати товар"),
-        BotCommand("removeproduct", "прибрати товар"),
-        BotCommand("orders_all",    "Усі замовлення"),
-        BotCommand("stats",         "Статистика"),
+        BotCommand("admin",          "Панель адміністратора"),
+        BotCommand("addproduct",     "Додати товар"),
+        BotCommand("editproduct",    "Відредагувати товар"),
+        BotCommand("removeproduct",  "Прибрати товар"),
+        BotCommand("orders_all",     "Усі замовлення"),
+        BotCommand("stats",          "Статистика"),
     ]
 
-    # bot1.delete_my_commands()
     bot1.set_my_commands(user_commands)
     bot1.set_my_commands(admin_commands, scope=BotCommandScopeChat(admin_id))
 
@@ -50,6 +49,7 @@ def cancel(message):
 
 catalog.register(bot)
 info.register(bot)
+cart.register(bot)
 admin.register(bot, ADMIN_ID)
 
 @bot.message_handler(commands=['start'])
@@ -75,11 +75,10 @@ def help_handler(message):
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=kb.main_menu())
 
 
-@bot.message_handler(state= None, func=lambda message: True)
+@bot.message_handler(state=None, func=lambda message: True)
 def unknown_message(message):
     bot.reply_to(message, ua.UNKNOWN_MESSAGE)
 
 
-#setup_commands(bot, ADMIN_ID)
+# setup_commands(bot, ADMIN_ID)
 bot.infinity_polling(skip_pending=True)
-# bot.polling(non_stop=True)

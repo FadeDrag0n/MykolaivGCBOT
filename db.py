@@ -1,6 +1,6 @@
 import sqlite3
 from typing import Optional, List
-from models import User, Category, Product
+from models import User, Category, Product, CartItem
 
 DB_PATH = "shop.db"
 
@@ -34,7 +34,16 @@ def init_db():
                 stock       INTEGER DEFAULT 0,
                 photo_id    TEXT
             );
+            CREATE TABLE IF NOT EXISTS cart (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                tg_id      INTEGER NOT NULL REFERENCES users(tg_id),
+                product_id INTEGER NOT NULL REFERENCES products(id),
+                quantity   INTEGER NOT NULL DEFAULT 1,
+                UNIQUE(tg_id, product_id)
+            );
         """)
+
+# ── users ──────────────────────────────────────────────────────────────────────
 
 def get_user(tg_id: int) -> Optional[User]:
     with get_conn() as conn:
@@ -60,7 +69,8 @@ def update_user_field(tg_id: int, field: str, value: str):
     with get_conn() as conn:
         conn.execute(f"UPDATE users SET {field} = ? WHERE tg_id = ?", (value, tg_id))
 
-# --- categories ---
+# ── categories ─────────────────────────────────────────────────────────────────
+
 def get_categories(type1: str = None) -> List[Category]:
     with get_conn() as conn:
         if type1:
@@ -74,7 +84,13 @@ def add_category(name: str, type1: str) -> Category:
         cur = conn.execute("INSERT INTO categories (name, type) VALUES (?, ?)", (name, type1))
         return Category(cur.lastrowid, name, type1)
 
-# --- products ---
+def get_category(cat_id: int) -> Optional[Category]:
+    with get_conn() as conn:
+        row = conn.execute("SELECT id, name, type FROM categories WHERE id = ?", (cat_id,)).fetchone()
+    return Category(*row) if row else None
+
+# ── products ───────────────────────────────────────────────────────────────────
+
 def get_products(category_id: int) -> List[Product]:
     with get_conn() as conn:
         rows = conn.execute(
@@ -82,6 +98,14 @@ def get_products(category_id: int) -> List[Product]:
             "FROM products WHERE category_id = ?", (category_id,)
         ).fetchall()
     return [Product(*r) for r in rows]
+
+def get_product_by_id(product_id: int) -> Optional[Product]:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, category_id, name, price, description, stock, photo_id "
+            "FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+    return Product(*row) if row else None
 
 def add_product(category_id: int, name: str, description: str,
                 price: float, stock: int, photo_id: str = None) -> Product:
@@ -93,9 +117,81 @@ def add_product(category_id: int, name: str, description: str,
         )
         return Product(cur.lastrowid, category_id, name, price, description, stock, photo_id)
 
+def update_product(product_id: int, **kwargs):
+    """Update product fields. Allowed: name, description, price, stock, photo_id, category_id"""
+    allowed = {"name", "description", "price", "stock", "photo_id", "category_id"}
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [product_id]
+    with get_conn() as conn:
+        conn.execute(f"UPDATE products SET {set_clause} WHERE id = ?", values)
+
+def delete_product(product_id: int):
+    with get_conn() as conn:
+        # remove from carts first
+        conn.execute("DELETE FROM cart WHERE product_id = ?", (product_id,))
+        conn.execute("DELETE FROM products WHERE id = ?", (product_id,))
+
 def get_all_products() -> List[Product]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, category_id, name, price, description, stock, photo_id FROM products"
         ).fetchall()
     return [Product(*r) for r in rows]
+
+# ── cart ───────────────────────────────────────────────────────────────────────
+
+def cart_add(tg_id: int, product_id: int, quantity: int = 1):
+    """Add or increase quantity in cart."""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO cart (tg_id, product_id, quantity) VALUES (?, ?, ?) "
+            "ON CONFLICT(tg_id, product_id) DO UPDATE SET quantity = quantity + excluded.quantity",
+            (tg_id, product_id, quantity)
+        )
+
+def cart_set_quantity(tg_id: int, product_id: int, quantity: int):
+    if quantity <= 0:
+        cart_remove(tg_id, product_id)
+        return
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO cart (tg_id, product_id, quantity) VALUES (?, ?, ?) "
+            "ON CONFLICT(tg_id, product_id) DO UPDATE SET quantity = excluded.quantity",
+            (tg_id, product_id, quantity)
+        )
+
+def cart_remove(tg_id: int, product_id: int):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM cart WHERE tg_id = ? AND product_id = ?", (tg_id, product_id))
+
+def cart_clear(tg_id: int):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM cart WHERE tg_id = ?", (tg_id,))
+
+def cart_get(tg_id: int) -> List[CartItem]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT c.id, c.tg_id, c.product_id, c.quantity,
+                      p.name, p.price, p.photo_id, p.stock
+               FROM cart c
+               JOIN products p ON p.id = c.product_id
+               WHERE c.tg_id = ?
+               ORDER BY c.id""",
+            (tg_id,)
+        ).fetchall()
+    return [CartItem(*r) for r in rows]
+
+def cart_item_get(tg_id: int, product_id: int) -> Optional[CartItem]:
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT c.id, c.tg_id, c.product_id, c.quantity,
+                      p.name, p.price, p.photo_id, p.stock
+               FROM cart c
+               JOIN products p ON p.id = c.product_id
+               WHERE c.tg_id = ? AND c.product_id = ?""",
+            (tg_id, product_id)
+        ).fetchone()
+    return CartItem(*row) if row else None
