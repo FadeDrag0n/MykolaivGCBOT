@@ -1,8 +1,7 @@
 import db
 import keyboards as kb
-import ua
 
-def register(bot):
+def register(bot, admin_id):
 
     @bot.message_handler(commands=["cart"])
     @bot.message_handler(func=lambda m: m.text == "🛒 Корзина")
@@ -36,27 +35,18 @@ def register(bot):
         items = db.cart_get(call.from_user.id)
         if not items:
             try:
-                bot.edit_message_text(
-                    "🛒 Кошик порожній",
-                    call.message.chat.id, call.message.message_id,
-                    reply_markup=kb.cart_view([])
-                )
+                bot.edit_message_text("🛒 Кошик порожній",
+                    call.message.chat.id, call.message.message_id, reply_markup=kb.cart_view([]))
             except Exception:
                 pass
             return
         total = sum(i.product_price * i.quantity for i in items)
         lines = [f"• {i.product_name} × {i.quantity} = {i.product_price * i.quantity:.2f} грн" for i in items]
-        text = (
-            "🛒 *Ваш кошик*\n\n"
-            + "\n".join(lines)
-            + f"\n\n💰 *Разом: {total:.2f} грн*\n\n"
-            "Натисніть ❌ поруч із товаром, щоб видалити його"
-        )
+        text = ("🛒 *Ваш кошик*\n\n" + "\n".join(lines)
+                + f"\n\n💰 *Разом: {total:.2f} грн*\n\nНатисніть ❌ поруч із товаром, щоб видалити його")
         try:
-            bot.edit_message_text(
-                text, call.message.chat.id, call.message.message_id,
-                parse_mode="Markdown", reply_markup=kb.cart_view(items)
-            )
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id,
+                                  parse_mode="Markdown", reply_markup=kb.cart_view(items))
         except Exception:
             pass
 
@@ -65,11 +55,8 @@ def register(bot):
         db.cart_clear(call.from_user.id)
         bot.answer_callback_query(call.id, "🗑 Кошик очищено")
         try:
-            bot.edit_message_text(
-                "🛒 Кошик порожній",
-                call.message.chat.id, call.message.message_id,
-                reply_markup=kb.cart_view([])
-            )
+            bot.edit_message_text("🛒 Кошик порожній",
+                call.message.chat.id, call.message.message_id, reply_markup=kb.cart_view([]))
         except Exception:
             pass
 
@@ -83,16 +70,38 @@ def register(bot):
             bot.answer_callback_query(call.id, "Кошик порожній", show_alert=True)
             return
 
+        # ── Валідація stock ────────────────────────────────────────────────────
+        out_of_stock = []
+        for item in items:
+            product = db.get_product_by_id(item.product_id)
+            if not product or product.stock == 0:
+                out_of_stock.append(item.product_name)
+            elif item.quantity > product.stock:
+                # Підправляємо кількість до максимально доступної
+                db.cart_set_quantity(call.from_user.id, item.product_id, product.stock)
+
+        if out_of_stock:
+            names = "\n".join(f"• {n}" for n in out_of_stock)
+            bot.send_message(
+                call.message.chat.id,
+                f"⚠️ Деякі товари більше недоступні і були видалені з кошика:\n\n{names}\n\n"
+                "Перевірте кошик та спробуйте знову.",
+                reply_markup=kb.main_menu()
+            )
+            for item in items:
+                product = db.get_product_by_id(item.product_id)
+                if not product or product.stock == 0:
+                    db.cart_remove(call.from_user.id, item.product_id)
+            return
+
         user = db.get_user(call.from_user.id)
         if not user or not user.phone:
-            # Просимо поділитися номером через Telegram
             bot.send_message(
                 call.message.chat.id,
                 "📱 Для оформлення замовлення потрібен ваш номер телефону.\n\n"
                 "Натисніть кнопку нижче, щоб поділитися номером:",
                 reply_markup=kb.request_phone()
             )
-            # Зберігаємо стан «чекаємо телефон для checkout»
             bot.set_state(call.from_user.id, "checkout_wait_phone", call.message.chat.id)
             return
 
@@ -120,22 +129,36 @@ def register(bot):
             return
         user = db.get_user(tg_id)
         order = db.create_order(
-            tg_id=tg_id,
-            phone=phone,
+            tg_id=tg_id, phone=phone,
             address=user.address if user else None,
-            comment=None,
-            items=items
+            comment=None, items=items
         )
         db.cart_clear(tg_id)
 
         lines = [f"• {i.product_name} × {i.quantity} — {i.price * i.quantity:.2f} грн" for i in order.items]
         text = (
             "✅ *Замовлення оформлено!*\n\n"
-            f"🔖 Номер замовлення: *#{order.id}*\n"
+            f"🔖 Номер: *#{order.id}*\n"
             f"📱 Телефон: {phone}\n"
             + (f"🏠 Адреса: {user.address}\n" if user and user.address else "")
-            + f"\n📦 Товари:\n" + "\n".join(lines)
+            + "\n📦 Товари:\n" + "\n".join(lines)
             + f"\n\n💰 *Разом: {order.total:.2f} грн*\n\n"
             "З вами зв'яжеться наш менеджер 🙂"
         )
         bot1.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb.main_menu())
+
+        # ── Сповіщення адміну ──────────────────────────────────────────────────
+        username = f"@{user.username}" if user and user.username else str(tg_id)
+        name = f"{user.first_name or ''} {user.last_name or ''}".strip() if user else "—"
+        admin_text = (
+            f"🔔 *Нове замовлення #{order.id}!*\n\n"
+            f"👤 {name} ({username})\n"
+            f"📱 {phone}\n"
+            + (f"🏠 {user.address}\n" if user and user.address else "")
+            + "\n📦 Товари:\n" + "\n".join(lines)
+            + f"\n\n💰 *{order.total:.2f} грн*"
+        )
+        try:
+            bot1.send_message(admin_id, admin_text, parse_mode="Markdown")
+        except Exception:
+            pass

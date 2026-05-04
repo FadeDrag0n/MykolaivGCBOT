@@ -22,17 +22,18 @@ def setup_commands(bot1, admin_id):
     user_commands = [
         BotCommand("start",   "Головне меню"),
         BotCommand("catalog", "Каталог товарів"),
+        BotCommand("search",  "Пошук товарів"),
         BotCommand("cart",    "Моя корзина"),
         BotCommand("orders",  "Мої замовлення"),
         BotCommand("help",    "Допомога"),
         BotCommand("info",    "Контактна інформація"),
     ]
     admin_commands = user_commands + [
-        BotCommand("admin",          "Панель адміністратора"),
-        BotCommand("addproduct",     "Додати товар"),
-        BotCommand("editproduct",    "Відредагувати товар"),
-        BotCommand("removeproduct",  "Прибрати товар"),
-        BotCommand("stats",          "Статистика"),
+        BotCommand("admin",         "Панель адміністратора"),
+        BotCommand("addproduct",    "Додати товар"),
+        BotCommand("editproduct",   "Редагувати товар"),
+        BotCommand("removeproduct", "Видалити товар"),
+        BotCommand("stats",         "Статистика"),
     ]
     bot1.set_my_commands(user_commands)
     bot1.set_my_commands(admin_commands, scope=BotCommandScopeChat(admin_id))
@@ -45,7 +46,7 @@ def cancel(message):
 
 catalog.register(bot)
 info.register(bot)
-cart.register(bot)
+cart.register(bot, ADMIN_ID)   # передаємо admin_id для сповіщень
 orders.register(bot)
 stats.register(bot, ADMIN_ID)
 admin.register(bot, ADMIN_ID)

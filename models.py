@@ -65,10 +65,14 @@ ORDER_STATUS_LABELS = {
     OrderStatus.RETURNED:    "↩️ Повернуто",
 }
 
+# Статуси які вважаються "активними" (не фінальними)
 ACTIVE_STATUSES = {
     OrderStatus.NEW, OrderStatus.PENDING, OrderStatus.IN_PROGRESS,
     OrderStatus.PAID, OrderStatus.PACKED, OrderStatus.SHIPPED, OrderStatus.READY,
 }
+
+# Статуси при яких клієнт може скасувати замовлення
+CANCELLABLE_BY_USER = {OrderStatus.NEW, OrderStatus.PENDING}
 
 @dataclass
 class OrderItem:
@@ -89,6 +93,7 @@ class Order:
     comment: Optional[str]
     total: float
     created_at: str
+    ttn: Optional[str] = None          # номер накладної Нова Пошта
     items: List[OrderItem] = field(default_factory=list)
     username: Optional[str] = None
     first_name: Optional[str] = None

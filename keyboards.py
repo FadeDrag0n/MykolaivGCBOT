@@ -4,11 +4,13 @@ from telebot.types import (
 )
 from models import OrderStatus, ORDER_STATUS_LABELS
 
+CATALOG_PAGE_SIZE = 5  # карток товарів на сторінку
+
 def main_menu():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row(KeyboardButton("🌿 Каталог товарів"), KeyboardButton("❓ Допомога"))
     kb.row(KeyboardButton("🛒 Корзина"), KeyboardButton("📦 Мої замовлення"))
-    kb.row(KeyboardButton("👤 Контактна інформація"))
+    kb.row(KeyboardButton("👤 Контактна інформація"), KeyboardButton("🔍 Пошук товарів"))
     return kb
 
 def category():
@@ -25,6 +27,41 @@ def subcategories(categories: list, back_type: str):
         icon = "🐾" if cat.type == "animals" else "🌿"
         kb.add(InlineKeyboardButton(f"{icon} {cat.name}", callback_data=f"subcat_{cat.id}"))
     kb.add(InlineKeyboardButton("🔙 Назад", callback_data="catalog_back"))
+    return kb
+
+def catalog_filters(cat_id: int, current_sort: str = "default"):
+    """Фільтри сортування для каталогу."""
+    sorts = [
+        ("default",    "📋 За замовч."),
+        ("price_asc",  "💰 Ціна ↑"),
+        ("price_desc", "💰 Ціна ↓"),
+        ("in_stock",   "✅ В наявності"),
+    ]
+    kb = InlineKeyboardMarkup()
+    row = []
+    for key, label in sorts:
+        mark = "▪️" if key == current_sort else ""
+        row.append(InlineKeyboardButton(f"{mark}{label}", callback_data=f"catsort_{cat_id}_{key}"))
+        if len(row) == 2:
+            kb.row(*row)
+            row = []
+    if row:
+        kb.row(*row)
+    return kb
+
+def catalog_pagination(cat_id: int, page: int, total: int, sort: str = "default"):
+    """Кнопки навігації між сторінками каталогу."""
+    kb = InlineKeyboardMarkup()
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("◀️ Назад", callback_data=f"catpage_{cat_id}_{page-1}_{sort}"))
+    last_page = (total - 1) // CATALOG_PAGE_SIZE
+    if page < last_page:
+        nav.append(InlineKeyboardButton("▶️ Далі", callback_data=f"catpage_{cat_id}_{page+1}_{sort}"))
+    if nav:
+        kb.row(*nav)
+    kb.add(InlineKeyboardButton(f"📄 {page+1}/{last_page+1}", callback_data="noop"))
+    kb.add(InlineKeyboardButton("🔙 До підкатегорій", callback_data=f"back_subcat_cat_{cat_id}"))
     return kb
 
 def product_card(product_id: int, in_cart: bool = False):
@@ -76,9 +113,7 @@ def info():
         InlineKeyboardButton("Номер телефону", callback_data="info_phone"),
         InlineKeyboardButton("Пошта", callback_data="info_email"),
     )
-    kb.row(
-        InlineKeyboardButton("Адреса", callback_data="info_address")
-    )
+    kb.row(InlineKeyboardButton("Адреса", callback_data="info_address"))
     return kb
 
 def cancel():
@@ -90,9 +125,7 @@ def add_product_categories(categories: list):
     kb = InlineKeyboardMarkup()
     for cat in categories:
         icon = "🐾" if cat.type == "animals" else "🌿"
-        kb.add(InlineKeyboardButton(
-            f"{icon} {cat.name}", callback_data=f"apc_{cat.id}"
-        ))
+        kb.add(InlineKeyboardButton(f"{icon} {cat.name}", callback_data=f"apc_{cat.id}"))
     kb.add(InlineKeyboardButton("❌ Скасувати", callback_data="addproduct_cancel"))
     return kb
 
@@ -113,9 +146,7 @@ def edit_product_fields(product_id: int):
         InlineKeyboardButton("💰 Ціна", callback_data=f"epf_price_{product_id}"),
         InlineKeyboardButton("📦 Залишок", callback_data=f"epf_stock_{product_id}"),
     )
-    kb.row(
-        InlineKeyboardButton("🖼 Фото", callback_data=f"epf_photo_{product_id}"),
-    )
+    kb.row(InlineKeyboardButton("🖼 Фото", callback_data=f"epf_photo_{product_id}"))
     kb.add(InlineKeyboardButton("❌ Скасувати", callback_data="editproduct_cancel"))
     return kb
 
@@ -131,6 +162,22 @@ def confirm_remove(product_id: int):
     kb.row(
         InlineKeyboardButton("✅ Так, видалити", callback_data=f"rm_confirm_{product_id}"),
         InlineKeyboardButton("❌ Ні", callback_data="removeproduct_cancel"),
+    )
+    return kb
+
+# ── Orders (user) ──────────────────────────────────────────────────────────────
+
+def order_card_user(order_id: int, can_cancel: bool = False):
+    kb = InlineKeyboardMarkup()
+    if can_cancel:
+        kb.add(InlineKeyboardButton("❌ Скасувати замовлення", callback_data=f"user_cancel_order_{order_id}"))
+    return kb
+
+def confirm_cancel_order(order_id: int):
+    kb = InlineKeyboardMarkup()
+    kb.row(
+        InlineKeyboardButton("✅ Так, скасувати", callback_data=f"user_cancel_confirm_{order_id}"),
+        InlineKeyboardButton("🔙 Ні", callback_data=f"user_cancel_no_{order_id}"),
     )
     return kb
 
@@ -150,15 +197,14 @@ def admin_panel():
         InlineKeyboardButton("🔔 Активні замовлення", callback_data="adm_orders_active"),
         InlineKeyboardButton("📋 Всі замовлення", callback_data="adm_orders_all"),
     )
+    kb.add(InlineKeyboardButton("📢 Розсилка", callback_data="adm_broadcast"))
     return kb
 
 def admin_categories(categories: list):
     kb = InlineKeyboardMarkup()
     for cat in categories:
         icon = "🐾" if cat.type == "animals" else "🌿"
-        kb.add(InlineKeyboardButton(
-            f"{icon} {cat.name}", callback_data=f"adm_cat_{cat.id}"
-        ))
+        kb.add(InlineKeyboardButton(f"{icon} {cat.name}", callback_data=f"adm_cat_{cat.id}"))
     kb.row(
         InlineKeyboardButton("➕ Додати категорію", callback_data="adm_cat_add"),
         InlineKeyboardButton("🔙 Назад", callback_data="adm_back"),
@@ -213,14 +259,22 @@ def admin_order_statuses(order_id: int, current_status: str):
     for status in OrderStatus:
         label = ORDER_STATUS_LABELS[status]
         mark = "✔️ " if status.value == current_status else ""
-        kb.add(InlineKeyboardButton(f"{mark}{label}", callback_data=f"adm_ord_status_{order_id}_{status.value}"))
+        kb.add(InlineKeyboardButton(
+            f"{mark}{label}", callback_data=f"adm_ord_status_{order_id}_{status.value}"
+        ))
     kb.add(InlineKeyboardButton("🔙 Назад", callback_data="adm_orders_active"))
     return kb
 
 def admin_order_card(order_id: int):
     kb = InlineKeyboardMarkup()
-    kb.row(
-        InlineKeyboardButton("🔄 Змінити статус", callback_data=f"adm_ord_change_{order_id}"),
-    )
+    kb.add(InlineKeyboardButton("🔄 Змінити статус", callback_data=f"adm_ord_change_{order_id}"))
     kb.add(InlineKeyboardButton("🔙 До замовлень", callback_data="adm_orders_active"))
+    return kb
+
+def admin_broadcast_confirm():
+    kb = InlineKeyboardMarkup()
+    kb.row(
+        InlineKeyboardButton("✅ Надіслати всім", callback_data="adm_broadcast_confirm"),
+        InlineKeyboardButton("❌ Скасувати", callback_data="adm_broadcast_cancel"),
+    )
     return kb

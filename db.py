@@ -49,6 +49,7 @@ def init_db():
                 address    TEXT,
                 comment    TEXT,
                 total      REAL NOT NULL,
+                ttn        TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE TABLE IF NOT EXISTS order_items (
@@ -60,6 +61,11 @@ def init_db():
                 quantity     INTEGER NOT NULL
             );
         """)
+        # Migration: add ttn column if missing (for existing DBs)
+        try:
+            conn.execute("ALTER TABLE orders ADD COLUMN ttn TEXT")
+        except Exception:
+            pass
 
 # ── users ──────────────────────────────────────────────────────────────────────
 
@@ -135,11 +141,35 @@ def get_category(cat_id: int) -> Optional[Category]:
 
 # ── products ───────────────────────────────────────────────────────────────────
 
-def get_products(category_id: int) -> List[Product]:
+def get_products(category_id: int, sort: str = "default") -> List[Product]:
+    """
+    sort: 'default' | 'price_asc' | 'price_desc' | 'in_stock'
+    """
+    order_clause = {
+        "price_asc":  "ORDER BY price ASC",
+        "price_desc": "ORDER BY price DESC",
+        "in_stock":   "ORDER BY stock DESC",
+    }.get(sort, "")
+    where = "WHERE category_id = ?"
+    if sort == "in_stock":
+        where = "WHERE category_id = ? AND stock > 0"
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT id, category_id, name, price, description, stock, photo_id "
+            f"FROM products {where} {order_clause}",
+            (category_id,)
+        ).fetchall()
+    return [Product(*r) for r in rows]
+
+def search_products(query: str) -> List[Product]:
+    """Full-text search by name and description."""
+    q = f"%{query.strip()}%"
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, category_id, name, price, description, stock, photo_id "
-            "FROM products WHERE category_id = ?", (category_id,)
+            "FROM products WHERE name LIKE ? OR description LIKE ? "
+            "ORDER BY CASE WHEN stock > 0 THEN 0 ELSE 1 END, name",
+            (q, q)
         ).fetchall()
     return [Product(*r) for r in rows]
 
@@ -184,14 +214,6 @@ def get_all_products() -> List[Product]:
     return [Product(*r) for r in rows]
 
 # ── cart ───────────────────────────────────────────────────────────────────────
-
-def cart_add(tg_id: int, product_id: int, quantity: int = 1):
-    with get_conn() as conn:
-        conn.execute(
-            "INSERT INTO cart (tg_id, product_id, quantity) VALUES (?, ?, ?) "
-            "ON CONFLICT(tg_id, product_id) DO UPDATE SET quantity = quantity + excluded.quantity",
-            (tg_id, product_id, quantity)
-        )
 
 def cart_set_quantity(tg_id: int, product_id: int, quantity: int):
     if quantity <= 0:
@@ -243,12 +265,14 @@ def _row_to_order(row) -> Order:
     return Order(
         id=row[0], tg_id=row[1], status=row[2], phone=row[3],
         address=row[4], comment=row[5], total=row[6], created_at=row[7],
-        username=row[8] if len(row) > 8 else None,
-        first_name=row[9] if len(row) > 9 else None,
-        last_name=row[10] if len(row) > 10 else None,
+        ttn=row[8] if len(row) > 8 else None,
+        username=row[9] if len(row) > 9 else None,
+        first_name=row[10] if len(row) > 10 else None,
+        last_name=row[11] if len(row) > 11 else None,
     )
 
-def create_order(tg_id: int, phone: str, address: str, comment: str, items: List[CartItem]) -> Order:
+def create_order(tg_id: int, phone: str, address: str, comment: str,
+                 items: List[CartItem]) -> Order:
     total = sum(i.product_price * i.quantity for i in items)
     with get_conn() as conn:
         cur = conn.execute(
@@ -262,13 +286,18 @@ def create_order(tg_id: int, phone: str, address: str, comment: str, items: List
                 "VALUES (?,?,?,?,?)",
                 (order_id, item.product_id, item.product_name, item.product_price, item.quantity)
             )
+            # Зменшуємо stock
+            conn.execute(
+                "UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?",
+                (item.quantity, item.product_id)
+            )
     return get_order(order_id)
 
 def get_order(order_id: int) -> Optional[Order]:
     with get_conn() as conn:
         row = conn.execute(
             """SELECT o.id, o.tg_id, o.status, o.phone, o.address, o.comment, o.total, o.created_at,
-                      u.username, u.first_name, u.last_name
+                      o.ttn, u.username, u.first_name, u.last_name
                FROM orders o LEFT JOIN users u ON u.tg_id = o.tg_id
                WHERE o.id = ?""", (order_id,)
         ).fetchone()
@@ -280,15 +309,15 @@ def get_order(order_id: int) -> Optional[Order]:
 
 def _get_order_items(conn, order_id: int) -> List[OrderItem]:
     rows = conn.execute(
-        "SELECT id, order_id, product_id, product_name, price, quantity FROM order_items WHERE order_id = ?",
-        (order_id,)
+        "SELECT id, order_id, product_id, product_name, price, quantity "
+        "FROM order_items WHERE order_id = ?", (order_id,)
     ).fetchall()
     return [OrderItem(*r) for r in rows]
 
 def get_orders_by_user(tg_id: int) -> List[Order]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, tg_id, status, phone, address, comment, total, created_at "
+            "SELECT id, tg_id, status, phone, address, comment, total, created_at, ttn "
             "FROM orders WHERE tg_id = ? ORDER BY created_at DESC", (tg_id,)
         ).fetchall()
         orders = [_row_to_order(r) for r in rows]
@@ -303,16 +332,16 @@ def get_all_orders(active_only: bool = False) -> List[Order]:
             placeholders = ",".join("?" * len(ACTIVE_STATUSES))
             statuses = [s.value for s in ACTIVE_STATUSES]
             rows = conn.execute(
-                f"""SELECT o.id, o.tg_id, o.status, o.phone, o.address, o.comment, o.total, o.created_at,
-                           u.username, u.first_name, u.last_name
+                f"""SELECT o.id, o.tg_id, o.status, o.phone, o.address, o.comment,
+                           o.total, o.created_at, o.ttn, u.username, u.first_name, u.last_name
                     FROM orders o LEFT JOIN users u ON u.tg_id = o.tg_id
                     WHERE o.status IN ({placeholders})
                     ORDER BY o.created_at DESC""", statuses
             ).fetchall()
         else:
             rows = conn.execute(
-                """SELECT o.id, o.tg_id, o.status, o.phone, o.address, o.comment, o.total, o.created_at,
-                          u.username, u.first_name, u.last_name
+                """SELECT o.id, o.tg_id, o.status, o.phone, o.address, o.comment,
+                          o.total, o.created_at, o.ttn, u.username, u.first_name, u.last_name
                    FROM orders o LEFT JOIN users u ON u.tg_id = o.tg_id
                    ORDER BY o.created_at DESC"""
             ).fetchall()
@@ -325,52 +354,60 @@ def update_order_status(order_id: int, status: str):
     with get_conn() as conn:
         conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
 
+def update_order_ttn(order_id: int, ttn: str):
+    with get_conn() as conn:
+        conn.execute("UPDATE orders SET ttn = ? WHERE id = ?", (ttn, order_id))
+
+def restore_stock_for_order(order_id: int):
+    """Повертає stock при скасуванні замовлення."""
+    with get_conn() as conn:
+        items = conn.execute(
+            "SELECT product_id, quantity FROM order_items WHERE order_id = ?", (order_id,)
+        ).fetchall()
+        for product_id, qty in items:
+            conn.execute(
+                "UPDATE products SET stock = stock + ? WHERE id = ?", (qty, product_id)
+            )
+
 # ── stats ──────────────────────────────────────────────────────────────────────
 
 def get_stats() -> dict:
     with get_conn() as conn:
-        # Revenue all time (done orders)
         row = conn.execute(
             "SELECT COALESCE(SUM(total),0) FROM orders WHERE status='done'"
         ).fetchone()
         revenue_all = row[0]
 
-        # Revenue this month
         row = conn.execute(
             "SELECT COALESCE(SUM(total),0) FROM orders "
             "WHERE status='done' AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')"
         ).fetchone()
         revenue_month = row[0]
 
-        # Orders all time
         row = conn.execute("SELECT COUNT(*) FROM orders").fetchone()
         orders_all = row[0]
 
-        # Orders this month
         row = conn.execute(
-            "SELECT COUNT(*) FROM orders WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')"
+            "SELECT COUNT(*) FROM orders "
+            "WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')"
         ).fetchone()
         orders_month = row[0]
 
-        # Top product by revenue
         row = conn.execute(
             """SELECT oi.product_name, SUM(oi.price * oi.quantity) as rev
-               FROM order_items oi
-               JOIN orders o ON o.id = oi.order_id
+               FROM order_items oi JOIN orders o ON o.id = oi.order_id
                WHERE o.status = 'done'
                GROUP BY oi.product_name ORDER BY rev DESC LIMIT 1"""
         ).fetchone()
-        top_revenue_product = row if row else None
+        top_revenue_product = row
 
-        # Top product by quantity
         row = conn.execute(
             """SELECT oi.product_name, SUM(oi.quantity) as qty
-               FROM order_items oi
-               JOIN orders o ON o.id = oi.order_id
+               FROM order_items oi JOIN orders o ON o.id = oi.order_id
                WHERE o.status = 'done'
                GROUP BY oi.product_name ORDER BY qty DESC LIMIT 1"""
         ).fetchone()
-        top_qty_product = row if row else None
+        top_qty_product = row
 
     return {
         "revenue_all": revenue_all,
