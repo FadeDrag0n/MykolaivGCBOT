@@ -25,9 +25,11 @@ def register(bot):
     def ask_phone(call):
         bot.answer_callback_query(call.id)
         bot.set_state(call.from_user.id, InfoStates.waiting_phone, call.message.chat.id)
-        current = bot.get_state(call.from_user.id, call.message.chat.id)
-        print(f"Стейт встановлено: {current}")
-        bot.send_message(call.message.chat.id, "📱 Введи номер телефону:\nНаприклад: +380991234567", reply_markup=kb.cancel())
+        bot.send_message(
+            call.message.chat.id,
+            "📱 Поділіться номером телефону через кнопку нижче:",
+            reply_markup=kb.request_phone()
+        )
 
     @bot.callback_query_handler(func=lambda c: c.data == "info_email")
     def ask_email(call):
@@ -41,18 +43,28 @@ def register(bot):
         bot.set_state(call.from_user.id, InfoStates.waiting_address, call.message.chat.id)
         bot.send_message(call.message.chat.id, "🏠 Введи адресу доставки:\nНаприклад: м. Київ, вул. Хрещатик 1, кв. 5", reply_markup=kb.cancel())
 
-    @bot.message_handler(state=InfoStates.waiting_phone, content_types=["text"])
-    def save_phone(message):
-        print(f"save_phone викликано! Текст: {message.text}")
-        phone = message.text.strip()
-        if not phone.startswith("+") or not phone[1:].isdigit() or len(phone) < 10:
-            bot.send_message(message.chat.id, "⚠️ Невірний формат. Введи номер у форматі +380991234567")
-            return
+    # ── Phone via contact ──────────────────────────────────────────────────────
+
+    @bot.message_handler(state=InfoStates.waiting_phone, content_types=["contact"])
+    def save_phone_contact(message):
+        phone = message.contact.phone_number
+        if not phone.startswith("+"):
+            phone = "+" + phone
         db.update_user_field(message.from_user.id, "phone", phone)
         bot.delete_state(message.from_user.id, message.chat.id)
         user = db.get_user(message.from_user.id)
-        bot.send_message(message.chat.id, "✅ Номер збережено!")
+        bot.send_message(message.chat.id, "✅ Номер збережено!", reply_markup=kb.main_menu())
         bot.send_message(message.chat.id, ua.info_message(user), reply_markup=kb.info(), parse_mode="Markdown")
+
+    @bot.message_handler(state=InfoStates.waiting_phone, content_types=["text"])
+    def phone_cancel(message):
+        if message.text == "🔙 Скасувати":
+            bot.delete_state(message.from_user.id, message.chat.id)
+            bot.send_message(message.chat.id, "❌ Скасовано", reply_markup=kb.main_menu())
+        else:
+            bot.send_message(message.chat.id, "⚠️ Будь ласка, скористайтесь кнопкою «📱 Поділитися номером»")
+
+    # ── Email ──────────────────────────────────────────────────────────────────
 
     @bot.message_handler(state=InfoStates.waiting_email, content_types=["text"])
     def save_email(message):
@@ -65,6 +77,8 @@ def register(bot):
         user = db.get_user(message.from_user.id)
         bot.send_message(message.chat.id, "✅ Email збережено!")
         bot.send_message(message.chat.id, ua.info_message(user), reply_markup=kb.info(), parse_mode="Markdown")
+
+    # ── Address ────────────────────────────────────────────────────────────────
 
     @bot.message_handler(state=InfoStates.waiting_address, content_types=["text"])
     def save_address(message):

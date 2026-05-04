@@ -7,9 +7,8 @@ from telebot.types import BotCommand, BotCommandScopeChat
 import keyboards as kb
 import db
 from telebot.storage import StateMemoryStorage
-from handlers import catalog, info, admin, cart
+from handlers import catalog, info, admin, cart, orders, stats
 load_dotenv()
-
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
@@ -24,20 +23,17 @@ def setup_commands(bot1, admin_id):
         BotCommand("start",   "Головне меню"),
         BotCommand("catalog", "Каталог товарів"),
         BotCommand("cart",    "Моя корзина"),
-        BotCommand("orders",  "Історія товарів"),
+        BotCommand("orders",  "Мої замовлення"),
         BotCommand("help",    "Допомога"),
         BotCommand("info",    "Контактна інформація"),
     ]
-
     admin_commands = user_commands + [
         BotCommand("admin",          "Панель адміністратора"),
         BotCommand("addproduct",     "Додати товар"),
         BotCommand("editproduct",    "Відредагувати товар"),
         BotCommand("removeproduct",  "Прибрати товар"),
-        BotCommand("orders_all",     "Усі замовлення"),
         BotCommand("stats",          "Статистика"),
     ]
-
     bot1.set_my_commands(user_commands)
     bot1.set_my_commands(admin_commands, scope=BotCommandScopeChat(admin_id))
 
@@ -50,6 +46,8 @@ def cancel(message):
 catalog.register(bot)
 info.register(bot)
 cart.register(bot)
+orders.register(bot)
+stats.register(bot, ADMIN_ID)
 admin.register(bot, ADMIN_ID)
 
 @bot.message_handler(commands=['start'])
@@ -70,15 +68,13 @@ def back_to_main(call):
 @bot.message_handler(commands=["help"])
 @bot.message_handler(func=lambda m: m.text == "❓ Допомога")
 def help_handler(message):
-    is_admin = message.from_user.id == ADMIN_ID
-    text = ua.USER_HELP + ua.ADMIN_HELP if is_admin else ua.USER_HELP
+    is_adm = message.from_user.id == ADMIN_ID
+    text = ua.USER_HELP + ua.ADMIN_HELP if is_adm else ua.USER_HELP
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=kb.main_menu())
-
 
 @bot.message_handler(state=None, func=lambda message: True)
 def unknown_message(message):
     bot.reply_to(message, ua.UNKNOWN_MESSAGE)
-
 
 # setup_commands(bot, ADMIN_ID)
 bot.infinity_polling(skip_pending=True)

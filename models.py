@@ -1,5 +1,6 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, List
+from enum import Enum
 
 @dataclass
 class User:
@@ -34,8 +35,61 @@ class CartItem:
     tg_id: int
     product_id: int
     quantity: int
-    # joined fields (not stored in db directly)
     product_name: Optional[str] = None
     product_price: Optional[float] = None
     product_photo_id: Optional[str] = None
     product_stock: Optional[int] = None
+
+class OrderStatus(Enum):
+    NEW            = "new"
+    PENDING        = "pending"
+    IN_PROGRESS    = "in_progress"
+    PAID           = "paid"
+    PACKED         = "packed"
+    SHIPPED        = "shipped"
+    READY          = "ready"
+    DONE           = "done"
+    CANCELLED      = "cancelled"
+    RETURNED       = "returned"
+
+ORDER_STATUS_LABELS = {
+    OrderStatus.NEW:         "🆕 Нове",
+    OrderStatus.PENDING:     "⏳ Очікує підтвердження",
+    OrderStatus.IN_PROGRESS: "🔧 В обробці",
+    OrderStatus.PAID:        "💳 Оплачено",
+    OrderStatus.PACKED:      "📦 Укомплектовано",
+    OrderStatus.SHIPPED:     "🚚 Відправлено",
+    OrderStatus.READY:       "🏪 Очікує у пункті видачі",
+    OrderStatus.DONE:        "✅ Виконано",
+    OrderStatus.CANCELLED:   "❌ Скасовано",
+    OrderStatus.RETURNED:    "↩️ Повернуто",
+}
+
+ACTIVE_STATUSES = {
+    OrderStatus.NEW, OrderStatus.PENDING, OrderStatus.IN_PROGRESS,
+    OrderStatus.PAID, OrderStatus.PACKED, OrderStatus.SHIPPED, OrderStatus.READY,
+}
+
+@dataclass
+class OrderItem:
+    id: int
+    order_id: int
+    product_id: int
+    product_name: str
+    price: float
+    quantity: int
+
+@dataclass
+class Order:
+    id: int
+    tg_id: int
+    status: str
+    phone: str
+    address: Optional[str]
+    comment: Optional[str]
+    total: float
+    created_at: str
+    items: List[OrderItem] = field(default_factory=list)
+    username: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
