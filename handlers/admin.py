@@ -3,6 +3,7 @@ import keyboards as kb
 from models import ORDER_STATUS_LABELS, OrderStatus, ACTIVE_STATUSES
 from telebot.handler_backends import State, StatesGroup
 
+
 class AddProductStates(StatesGroup):
     category    = State()
     name        = State()
@@ -200,10 +201,6 @@ def register(bot, admin_id):
             pass
         bot.send_message(call.message.chat.id, text, parse_mode="Markdown")
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # Замовлення
-    # ══════════════════════════════════════════════════════════════════════════
-
     @bot.callback_query_handler(func=lambda c: c.data == "adm_orders_active")
     def adm_orders_active(call):
         if not is_admin_call(call): return
@@ -311,7 +308,7 @@ def register(bot, admin_id):
 
         order = db.get_order(order_id)
         if not order: return
-        ttn_text = f"\n\n📬 Номер накладної: `{ttn}`\nВідстежити: https://novaposhta.ua/" if ttn else ""
+        ttn_text = f"\n\n📬 Номер накладної: `{ttn}`\nВідстежити: nova.poshta.ua" if ttn else ""
         try:
             bot1.send_message(
                 order.tg_id,
@@ -321,10 +318,6 @@ def register(bot, admin_id):
             )
         except Exception:
             pass
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # Статистика
-    # ══════════════════════════════════════════════════════════════════════════
 
     @bot.callback_query_handler(func=lambda c: c.data == "adm_stats")
     def adm_stats(call):
@@ -358,11 +351,9 @@ def register(bot, admin_id):
         bot.set_state(call.from_user.id, BroadcastState.waiting_text, call.message.chat.id)
         bot.send_message(
             call.message.chat.id,
-            f"📢 *Розсилка*\n\nОтримувачів: *{len(users)}* користувачів\n\n"
+            f"📢 Розсилка\n\nОтримувачів: {len(users)} користувачів\n\n"
             "Надішли текст повідомлення (можна з фото).\n"
-            "Фото надсилай з підписом — він стане текстом розсилки.\n\n"
-            "/skip_photo — тільки текст",
-            parse_mode="Markdown",
+            "Фото надсилай з підписом - він стане текстом розсилки.",
             reply_markup=kb.cancel()
         )
 
@@ -380,12 +371,12 @@ def register(bot, admin_id):
         photo_id = data.get("bc_photo_id")
         users = db.get_all_users()
 
-        preview = f"📢 *Попередній перегляд:*\n\n{text}" if text else "📢 *Попередній перегляд:* (тільки фото)"
+        preview = f"📢 Попередній перегляд:\n\n{text}" if text else "📢 Попередній перегляд: (тільки фото)"
         if photo_id:
             bot.send_photo(message.chat.id, photo_id, caption=preview,
-                           parse_mode="Markdown", reply_markup=kb.admin_broadcast_confirm())
+                           reply_markup=kb.admin_broadcast_confirm())
         else:
-            bot.send_message(message.chat.id, preview, parse_mode="Markdown",
+            bot.send_message(message.chat.id, preview,
                              reply_markup=kb.admin_broadcast_confirm())
 
         bot.set_state(message.from_user.id, BroadcastState.confirm, message.chat.id)
@@ -404,9 +395,9 @@ def register(bot, admin_id):
         for user in users:
             try:
                 if photo_id:
-                    bot.send_photo(user.tg_id, photo_id, caption=text or None, parse_mode="Markdown")
+                    bot.send_photo(user.tg_id, photo_id, caption=text or None)
                 else:
-                    bot.send_message(user.tg_id, text, parse_mode="Markdown")
+                    bot.send_message(user.tg_id, text)
                 sent += 1
             except Exception:
                 failed += 1
@@ -428,10 +419,6 @@ def register(bot, admin_id):
         bot.send_message(call.message.chat.id, "❌ Розсилку скасовано",
                          reply_markup=kb.admin_panel())
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # Товари
-    # ══════════════════════════════════════════════════════════════════════════
-
     @bot.callback_query_handler(func=lambda c: c.data == "adm_products")
     def adm_products(call):
         if not is_admin_call(call): return
@@ -440,8 +427,6 @@ def register(bot, admin_id):
             "📦 *Управління товарами*\n\n"
             "/addproduct — додати\n/editproduct — редагувати\n/removeproduct — видалити",
             parse_mode="Markdown", reply_markup=kb.admin_panel())
-
-    # ── ADD PRODUCT ────────────────────────────────────────────────────────────
 
     @bot.message_handler(commands=["addproduct"])
     def addproduct_start(message):
@@ -532,8 +517,6 @@ def register(bot, admin_id):
         bot1.send_message(message.chat.id,
             f"✅ *Товар додано!*\n\n📦 {product.name}\n💰 {product.price} грн\n🗂 {product.stock} шт.",
             parse_mode="Markdown", reply_markup=kb.main_menu())
-
-    # ── EDIT PRODUCT ───────────────────────────────────────────────────────────
 
     @bot.message_handler(commands=["editproduct"])
     def editproduct_start(message):
@@ -630,8 +613,6 @@ def register(bot, admin_id):
         bot.delete_state(message.from_user.id, message.chat.id)
         bot.send_message(message.chat.id, f"✅ *{product.name}* оновлено!\n{result}",
                          parse_mode="Markdown", reply_markup=kb.main_menu())
-
-    # ── REMOVE PRODUCT ─────────────────────────────────────────────────────────
 
     @bot.message_handler(commands=["removeproduct"])
     def removeproduct_start(message):

@@ -60,8 +60,6 @@ def register(bot, admin_id):
         except Exception:
             pass
 
-    # ── Checkout ───────────────────────────────────────────────────────────────
-
     @bot.callback_query_handler(func=lambda c: c.data == "cart_checkout")
     def cart_checkout(call):
         bot.answer_callback_query(call.id)
@@ -70,7 +68,6 @@ def register(bot, admin_id):
             bot.answer_callback_query(call.id, "Кошик порожній", show_alert=True)
             return
 
-        # ── Валідація stock ────────────────────────────────────────────────────
         out_of_stock = []
         for item in items:
             product = db.get_product_by_id(item.product_id)

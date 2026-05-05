@@ -4,7 +4,7 @@ from telebot.types import (
 )
 from models import OrderStatus, ORDER_STATUS_LABELS
 
-CATALOG_PAGE_SIZE = 5  # карток товарів на сторінку
+CATALOG_PAGE_SIZE = 5
 
 def main_menu():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)

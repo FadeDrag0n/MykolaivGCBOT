@@ -17,8 +17,6 @@ def register(bot):
             db.add_category("Добрива", "plants")
             db.add_category("Ґрунти", "plants")
 
-    # ── Пошук ─────────────────────────────────────────────────────────────────
-
     @bot.message_handler(commands=["search"])
     @bot.message_handler(func=lambda m: m.text == "🔍 Пошук товарів")
     def search_start(message):
@@ -54,8 +52,6 @@ def register(bot):
         for product in products[:5]:
             _send_product_card(bot, message.chat.id, product, message.from_user.id)
 
-    # ── Головна сторінка каталогу ──────────────────────────────────────────────
-
     @bot.message_handler(commands=["catalog"])
     @bot.message_handler(func=lambda m: m.text == "🌿 Каталог товарів")
     def catalog(message):
@@ -67,8 +63,6 @@ def register(bot):
         bot.answer_callback_query(call.id)
         _ensure_categories()
         bot.send_message(call.message.chat.id, ua.CATALOG_OPEN, reply_markup=kb.category())
-
-    # ── Тип → підкатегорії ─────────────────────────────────────────────────────
 
     @bot.callback_query_handler(func=lambda c: c.data == "cat_animals")
     def animals(call):
@@ -96,7 +90,6 @@ def register(bot):
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, ua.CATALOG_OPEN, reply_markup=kb.category())
 
-    # Повернення до підкатегорій за cat_id (з пагінації)
     @bot.callback_query_handler(func=lambda c: c.data.startswith("back_subcat_cat_"))
     def back_subcat_from_page(call):
         bot.answer_callback_query(call.id)
@@ -112,15 +105,11 @@ def register(bot):
             reply_markup=kb.subcategories(cats, category.type)
         )
 
-    # ── Підкатегорія → список товарів (сторінка 0) ────────────────────────────
-
     @bot.callback_query_handler(func=lambda c: c.data.startswith("subcat_"))
     def show_products(call):
         bot.answer_callback_query(call.id)
         cat_id = int(call.data.split("_")[1])
         _show_product_page(call.message.chat.id, call.from_user.id, cat_id, page=0, sort="default")
-
-    # ── Фільтр/сортування ─────────────────────────────────────────────────────
 
     @bot.callback_query_handler(func=lambda c: c.data.startswith("catsort_"))
     def catalog_sort(call):
@@ -130,8 +119,6 @@ def register(bot):
         cat_id = int(parts[1])
         sort = parts[2]
         _show_product_page(call.message.chat.id, call.from_user.id, cat_id, page=0, sort=sort)
-
-    # ── Пагінація ──────────────────────────────────────────────────────────────
 
     @bot.callback_query_handler(func=lambda c: c.data.startswith("catpage_"))
     def catalog_page(call):
@@ -169,7 +156,9 @@ def register(bot):
             "in_stock":   "в наявності",
         }
 
-        # Заголовок із фільтрами
+        for product in page_products:
+            _send_product_card(bot, chat_id, product, tg_id)
+
         bot.send_message(
             chat_id,
             f"📦 *{cat_name}* — {total} позицій\n"
@@ -180,9 +169,6 @@ def register(bot):
             reply_markup=kb.catalog_filters(cat_id, current_sort=sort)
         )
 
-        for product in page_products:
-            _send_product_card(bot, chat_id, product, tg_id)
-
         # Навігація (тільки якщо є більше однієї сторінки)
         if total > CATALOG_PAGE_SIZE:
             bot.send_message(
@@ -190,8 +176,6 @@ def register(bot):
                 "⬆️ Навігація:",
                 reply_markup=kb.catalog_pagination(cat_id, page, total, sort)
             )
-
-    # ── Картка товару ──────────────────────────────────────────────────────────
 
     def _send_product_card(bot1, chat_id: int, product, tg_id: int):
         cart_item = db.cart_item_get(tg_id, product.id)
@@ -213,8 +197,6 @@ def register(bot):
                             parse_mode="Markdown", reply_markup=markup)
         else:
             bot1.send_message(chat_id, caption, parse_mode="Markdown", reply_markup=markup)
-
-    # ── Додати у кошик ────────────────────────────────────────────────────────
 
     @bot.callback_query_handler(func=lambda c: c.data.startswith("cart_add_"))
     def cart_add(call):

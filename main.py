@@ -46,7 +46,7 @@ def cancel(message):
 
 catalog.register(bot)
 info.register(bot)
-cart.register(bot, ADMIN_ID)   # передаємо admin_id для сповіщень
+cart.register(bot, ADMIN_ID)
 orders.register(bot)
 stats.register(bot, ADMIN_ID)
 admin.register(bot, ADMIN_ID)
@@ -77,5 +77,4 @@ def help_handler(message):
 def unknown_message(message):
     bot.reply_to(message, ua.UNKNOWN_MESSAGE)
 
-# setup_commands(bot, ADMIN_ID)
 bot.infinity_polling(skip_pending=True)
